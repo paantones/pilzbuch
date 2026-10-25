@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#2e4a34">
+<title>Pilzbuch</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<style>
+:root{
+  --bg:#f6f3ec; --card:#fffdf8; --ink:#1f2420; --muted:#6b706a; --line:#e2ddd1;
+  --accent:#2e4a34; --accent-ink:#fff; --hot:rgba(46,110,200,.16); --hot-b:rgba(46,110,200,.55);
+  --ess:#2f7a3d; --gift:#b3261e; --tod:#5c0a0a; --unge:#8a6d1e; --na:#7a7f78;
+}
+@media (prefers-color-scheme: dark){
+  :root{--bg:#141714; --card:#1d211d; --ink:#e9ece6; --muted:#9aa197; --line:#2f352f; --accent:#7fb38a; --accent-ink:#0f1a12;
+  --hot:rgba(120,170,255,.18); --hot-b:rgba(120,170,255,.6); --ess:#7cc88a; --gift:#ff8a80; --tod:#ff5a5a; --unge:#e0c070; --na:#9aa197}
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-text-size-adjust:100%}
+header{position:sticky;top:0;z-index:20;background:var(--accent);color:var(--accent-ink);display:flex;align-items:center;gap:8px;padding:10px 12px;padding-top:max(10px,env(safe-area-inset-top))}
+header h1{font-size:17px;margin:0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+header button{background:transparent;border:0;color:inherit;font-size:22px;min-width:40px;height:40px;border-radius:8px}
+header button:active{background:rgba(255,255,255,.15)}
+main{max-width:900px;margin:0 auto;padding:12px 12px 80px}
+.btn{display:block;width:100%;text-align:left;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin:8px 0;color:inherit;font:inherit;text-decoration:none}
+.btn b{display:block;font-size:17px}.btn small{color:var(--muted)}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:transparent}
+.btn.primary small{color:inherit;opacity:.8}
+input[type=search]{width:100%;font:inherit;font-size:17px;padding:12px 14px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--ink)}
+.chips{display:flex;gap:6px;overflow-x:auto;padding:8px 0;scrollbar-width:none}
+.chip{flex:none;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:999px;padding:6px 12px;font:inherit;font-size:14px}
+.chip.on{background:var(--accent);color:var(--accent-ink);border-color:transparent}
+.list{list-style:none;margin:0;padding:0}
+.item{display:flex;align-items:center;gap:10px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin:6px 0}
+.item a{flex:1;color:inherit;text-decoration:none;min-width:0}
+.item .de{font-weight:600}.item .lat{font-style:italic;color:var(--muted);font-size:14px}
+.star{background:none;border:0;font-size:22px;color:var(--muted);min-width:40px;height:40px}
+.star.on{color:#d9a400}
+.badge{display:inline-block;font-size:12px;font-weight:600;padding:2px 8px;border-radius:999px;border:1px solid currentColor;white-space:nowrap;margin:2px 4px 2px 0}
+.b-essbar{color:var(--ess)}.b-giftig{color:var(--gift)}.b-toedlich{color:#fff;background:var(--tod);border-color:var(--tod)}.b-ungeniessbar{color:var(--unge)}.b-unbekannt{color:var(--na)}
+.b-rl{color:var(--muted)}.b-heute{color:#fff;background:var(--gift);border-color:var(--gift)}
+h2{font-size:15px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin:22px 0 6px}
+h2 a{color:inherit}
+.sect{font-size:14px;font-weight:600;margin:16px 0 4px;color:var(--muted)}
+.sect a{color:var(--accent)}
+.note{font-size:13px;color:var(--muted);background:var(--card);border:1px dashed var(--line);border-radius:10px;padding:10px;margin:10px 0}
+.warn{font-size:14px;background:var(--gift);color:#fff;border-radius:10px;padding:10px;margin:10px 0}
+.pg{position:relative;width:100%;aspect-ratio:419.5/595.3;background:#fff;margin:0 0 10px;border-radius:4px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.15)}
+.pg canvas,.crop canvas,.plate canvas{display:block;width:100%;height:auto}
+.pg .hs{position:absolute;border:0;padding:0;background:var(--hot);outline:1.5px solid var(--hot-b);border-radius:4px}
+.pg .hs:active{background:var(--hot-b)}
+.pg .flash{position:absolute;left:0;right:0;height:3.2%;background:rgba(255,210,0,.35);pointer-events:none;animation:fl 2.4s ease-out forwards}
+@keyframes fl{0%,60%{opacity:1}100%{opacity:0}}
+.pg .lbl{position:absolute;right:6px;bottom:6px;font-size:11px;color:#777;background:#fffc;padding:1px 6px;border-radius:6px}
+.crop,.plate{background:#fff;border-radius:8px;overflow:hidden;margin:8px 0;box-shadow:0 1px 3px rgba(0,0,0,.15)}
+.plate{cursor:zoom-in}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+.row .btn{flex:1;min-width:140px;text-align:center;padding:10px}
+.tiny{font-size:12px;color:var(--muted)}
+#zoom{position:fixed;inset:0;z-index:50;background:#000;display:none;overflow:auto;touch-action:pan-x pan-y pinch-zoom}
+#zoom canvas{display:block;width:250%;max-width:none;height:auto}
+#zoom button{position:fixed;top:max(10px,env(safe-area-inset-top));right:10px;z-index:51;font-size:20px;width:44px;height:44px;border-radius:22px;border:0;background:#fffd}
+.keyhead{position:sticky;top:60px;z-index:10;background:var(--bg);padding:6px 0;display:flex;gap:6px;overflow-x:auto}
+.loading{color:var(--muted);text-align:center;padding:40px 0}
+.spinner{width:28px;height:28px;border:3px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:sp 1s linear infinite;margin:0 auto 10px}
+@keyframes sp{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<header>
+  <button id="back" aria-label="Zurück">‹</button>
+  <h1 id="title">Pilzbuch</h1>
+  <button id="home" aria-label="Start">⌂</button>
+</header>
+<main id="main"><div class="loading"><div class="spinner"></div>Lade …</div></main>
+<div id="zoom"><button id="zclose" aria-label="Schließen">✕</button></div>
+<script src="data.js"></script>
+<script type="module" src="app.js"></script>
+</body>
+</html>
