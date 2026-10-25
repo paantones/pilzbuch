@@ -14,6 +14,6 @@ Danach läuft alles offline.
 
 Hinweise:
 - Löschst du die Website-Daten im Browser, ist das gespeicherte PDF weg. Dann einfach neu auswählen.
-- Nach einem App-Update in sw.js die Versionsnummer („pilzbuch-v1") hochzählen.
+- Nach einem App-Update in sw.js die Versionsnummer („pilzbuch-v2") hochzählen.
 - Speisewert und Rote Liste sind automatisch aus dem Buch (Stand 1988) erkannt.
   Maßgeblich ist der angezeigte Originaltext. Vor dem Essen immer zur Pilzberatung.

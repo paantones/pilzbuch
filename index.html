@@ -66,6 +66,19 @@ h2 a{color:inherit}
 .loading{color:var(--muted);text-align:center;padding:40px 0}
 .spinner{width:28px;height:28px;border:3px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:sp 1s linear infinite;margin:0 auto 10px}
 @keyframes sp{to{transform:rotate(360deg)}}
+table.mm{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden;font-size:14px}
+table.mm th{text-align:left;vertical-align:top;color:var(--muted);font-weight:600;padding:8px 10px;width:34%;border-top:1px solid var(--line)}
+table.mm td{padding:8px 10px;border-top:1px solid var(--line)}
+table.mm tr:first-child th,table.mm tr:first-child td{border-top:0}
+.tag{display:inline-flex;align-items:center;gap:4px;font-size:13px;padding:1px 8px;border-radius:999px;background:var(--bg);border:1px solid var(--line);margin:1px 2px 1px 0;white-space:nowrap}
+.sw{width:10px;height:10px;border-radius:50%;border:1px solid rgba(0,0,0,.25);display:inline-block}
+details.fg{background:var(--card);border:1px solid var(--line);border-radius:12px;margin:6px 0;padding:0 12px}
+details.fg summary{padding:12px 0;font-weight:600;list-style:none;display:flex;justify-content:space-between;gap:8px}
+details.fg summary::-webkit-details-marker{display:none}
+details.fg summary .cnt{color:var(--accent);font-weight:700}
+details.fg .chips{flex-wrap:wrap;padding:0 0 12px}
+.bar{position:sticky;top:60px;z-index:10;background:var(--bg);padding:8px 0;display:flex;gap:8px;align-items:center}
+.bar .btn{margin:0;padding:10px;text-align:center}
 </style>
 </head>
 <body>

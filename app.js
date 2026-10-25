@@ -108,6 +108,7 @@ function viewHome(){
     <div id="homebtns">
     <a class="btn primary" href="#/schluessel/1"><b>Bestimmen</b><small>Mit dem Bestimmungsschlüssel des Buchs, Schritt für Schritt</small></a>
     <a class="btn" href="#/schluessel"><b>Alle Schlüssel</b><small>Haupt- und Gruppenschlüssel direkt öffnen</small></a>
+    <a class="btn" href="#/merkmale"><b>Nach Merkmalen filtern</b><small>Hutfarbe, Unterseite, Geruch, Baum, Lebensraum …</small></a>
     <a class="btn" href="#/arten"><b>Alle Arten</b><small>${A.length} Arten nach Doppelseiten, mit Filtern</small></a>
     <a class="btn" href="#/merkliste"><b>Merkliste (${merk.size})</b><small>Deine Kandidaten zum Vergleichen</small></a>
     <div class="note">Speisewert und Rote Liste sind automatisch aus dem Buch (Stand 1988) erkannt. Maßgeblich ist der Originaltext. Manche damals essbaren Arten gelten heute als giftig. Vor dem Essen immer zur Pilzberatung.</div>
@@ -234,6 +235,7 @@ function viewArt(id){
     ${x.heute ? `<div class="warn">⚠ ${esc(x.heute)}</div>` : ''}
     <div class="row"><button class="btn" id="mk">${merk.has(id) ? '★ Gemerkt' : '☆ Merken'}</button>
       <a class="btn" href="#/doppelseite/${x.pdf}">Doppelseite</a></div>
+    ${merkmaleHtml(x)}
     <div class="sect">Beschreibung im Buch <span class="tiny">– antippen zum Vergrößern</span></div>
     <div class="crop" id="cr"><canvas></canvas></div>
     <div class="sect">Tafel S. ${x.tafel - 1}</div>
@@ -277,6 +279,88 @@ function viewArten(){
   q.oninput = draw; draw();
 }
 
+/* ---------- Merkmale ---------- */
+const SW = {weiß:'#fff',creme:'#f3e6c4',gelb:'#f2cf2a',orange:'#f08a24',rot:'#c8322a',rosa:'#f2a5b4',violett:'#8a55b0',blau:'#3d6fc4',grün:'#5f8f3a',braun:'#7a5230',ocker:'#c99a4b',grau:'#9a9a96',schwarz:'#222'};
+const COLORS = Object.keys(SW);
+const tag = v => `<span class="tag">${SW[v] ? `<i class="sw" style="background:${SW[v]}"></i>` : ''}${esc(v)}</span>`;
+const tags = a => (a || []).map(tag).join('');
+const num = v => String(v).replace('.', ',').replace(/,0$/, '');
+const span = r => r[0] === r[1] ? num(r[0]) : `${num(r[0])}–${num(r[1])}`;
+const FG = [
+  {k:'u', t:'Unterseite', get:f => f.unterseite ? [f.unterseite] : [], opts:['Lamellen','Röhren/Poren','Leisten','Stacheln','glatt/Gallert/Kruste','Keule/Koralle','Becher/Schüssel','Morchel/Lorchel','Bauchpilz/Knolle']},
+  {k:'hg', t:'Hutbreite', get:f => { const h = f.hut, r = []; if (!h) return r;
+    if (h[0] < 5) r.push('bis 5 cm'); if (h[1] >= 5 && h[0] <= 10) r.push('5–10 cm'); if (h[1] > 10) r.push('über 10 cm'); return r; }, opts:['bis 5 cm','5–10 cm','über 10 cm']},
+  {k:'hf', t:'Hutfarbe', get:f => f.hutfarbe || [], opts:COLORS, col:1},
+  {k:'uf', t:'Farbe Lamellen/Poren', get:f => f.unterfarbe || [], opts:COLORS, col:1},
+  {k:'sf', t:'Stielfarbe', get:f => f.stielfarbe || [], opts:COLORS, col:1},
+  {k:'st', t:'Ring, Knolle & Co.', all:1, get:f => [f.ring && 'Ring', f.knolle && 'Knolle', f.volva && 'Volva/Scheide', f.schleier && 'Schleier/Cortina', f.schmierig && 'Hut schmierig'].filter(Boolean),
+    opts:['Ring','Knolle','Volva/Scheide','Schleier/Cortina','Hut schmierig']},
+  {k:'vf', t:'Verfärbung', get:f => f.verfaerbung || [], opts:['blauend','rötend','gilbend','schwärzend','bräunend','grünend']},
+  {k:'ge', t:'Geruch', get:f => f.geruch || [], opts:['Mehl','Anis','Rettich/Rübe','Knoblauch','Bittermandel','fruchtig','Honig/süß','Kokos','Fisch','Gas/Teer','Chlor/Lauge','Erde/Kartoffel','Gewürz/Curry','unangenehm']},
+  {k:'gs', t:'Geschmack', get:f => f.geschmack || [], opts:['mild','scharf','bitter']},
+  {k:'mi', t:'Milch (Milchlinge)', get:f => f.milch ? [f.milch] : [], opts:['weiß','gilbend','rot/orange','wässrig']},
+  {k:'bm', t:'Baumpartner', get:f => f.baum || [], opts:['Fichte','Kiefer','Lärche','Tanne','Buche','Eiche','Birke','Pappel/Espe','Erle','Hainbuche','Weide','Hasel','Linde','Kastanie']},
+  {k:'lr', t:'Lebensraum', get:f => f.lebensraum || [], opts:['Laubwald','Nadelwald','Wiese/Weide','Park/Garten','Moor/Sumpf','Heide/Sand','Kalkboden','saurer Boden','auf Holz','auf Dung','Brandstelle','Moos','Zapfen','Nadelstreu/Laubstreu','auf Pilzen']},
+  {k:'sa', t:'Jahreszeit', get:f => f.saison || [], opts:['Frühjahr','Sommer','Herbst','Winter']},
+  {k:'hk', t:'Häufigkeit', get:f => f.haeufig ? [f.haeufig] : [], opts:['häufig','zerstreut','selten','sehr selten']},
+  {k:'es', t:'Speisewert', get:(f, x) => [ESS[x.ess]], opts:Object.values(ESS)}
+];
+function merkmaleHtml(x){
+  const f = x.f || {}, R = [];
+  const add = (k, parts) => { const v = parts.filter(Boolean).join(' '); if (v) R.push(`<tr><th>${k}</th><td>${v}</td></tr>`); };
+  add('Hut', [f.hut && `<b>Ø ${span(f.hut)} cm</b>`, tags(f.hutfarbe), f.schmierig && tag('schmierig')]);
+  add('Unterseite', [f.unterseite && `<b>${esc(f.unterseite)}</b>`, tags(f.unterfarbe)]);
+  add('Stiel', [f.stiel && `<b>${num(f.stiel[0])} × ${num(f.stiel[1])} cm</b>`, tags(f.stielfarbe),
+    f.ring && tag('Ring'), f.knolle && tag('Knolle'), f.volva && tag('Volva/Scheide'), f.schleier && tag('Schleier/Cortina')]);
+  add('Verfärbung', [tags(f.verfaerbung)]);
+  add('Milch', [f.milch && tag(f.milch)]);
+  add('Geruch', [tags(f.geruch)]);
+  add('Geschmack', [tags(f.geschmack)]);
+  add('Sporen', [f.sporen && esc(f.sporen)]);
+  add('Bäume', [tags(f.baum)]);
+  add('Lebensraum', [tags(f.lebensraum)]);
+  add('Häufigkeit', [f.haeufig && tag(f.haeufig)]);
+  add('Jahreszeit', [tags(f.saison)]);
+  return R.length ? `<div class="sect">Merkmale <span class="tiny">– automatisch ausgelesen, Lücken möglich</span></div><table class="mm">${R.join('')}</table>` : '';
+}
+let mf = store.get('mf', {});
+function viewMerkmale(){
+  const sel = k => mf[k] || [];
+  const active = FG.filter(g => sel(g.k).length);
+  setView('Nach Merkmalen', `
+    <div class="bar"><a class="btn primary" href="#mres" style="flex:2" id="cntbtn">…</a><button class="btn" id="mreset" style="flex:1">Zurücksetzen</button></div>
+    ${FG.map(g => `<details class="fg" ${sel(g.k).length ? 'open' : ''}><summary>${g.t}<span class="cnt">${sel(g.k).length ? sel(g.k).length + ' gewählt' : ''}</span></summary>
+      <div class="chips">${g.opts.map(o => `<button class="chip ${sel(g.k).includes(o) ? 'on' : ''}" data-g="${g.k}" data-o="${esc(o)}">${g.col ? `<i class="sw" style="background:${SW[o]}"></i> ` : ''}${esc(o)}</button>`).join('')}</div></details>`).join('')}
+    <div class="note">Innerhalb einer Gruppe reicht eine Übereinstimmung, z. B. Hutfarbe braun <i>oder</i> ocker. Gruppen werden kombiniert. Bei „Ring, Knolle & Co.“ müssen alle gewählten Merkmale zutreffen. Die Merkmale sind automatisch aus den Beschreibungen gelesen. Arten ohne Angabe stehen deshalb in einer eigenen Liste darunter.</div>
+    <div id="mres"></div>`);
+  const sure = [], maybe = [];
+  for (const x of A) {
+    const f = x.f || {}; let ok = true; const unk = [];
+    for (const g of active) {
+      const v = g.get(f, x), s = sel(g.k);
+      if (g.all) { if (!s.every(o => v.includes(o))) { ok = false; break; } }
+      else if (!v.length) unk.push(g.t);
+      else if (!v.some(o => s.includes(o))) { ok = false; break; }
+    }
+    if (ok) (unk.length ? maybe : sure).push([x, unk]);
+  }
+  document.getElementById('cntbtn').textContent = active.length ? `${sure.length} Treffer${maybe.length ? ` (+${maybe.length})` : ''} anzeigen ↓` : `Merkmale wählen`;
+  document.getElementById('mres').innerHTML = !active.length ? '' :
+    `<div class="sect">Passend (${sure.length})</div>${list(sure.slice(0, 300).map(a => a[0]))}` +
+    (maybe.length ? `<div class="sect">Ohne Angabe zu einzelnen Merkmalen (${maybe.length})</div>${list(maybe.slice(0, 200).map(a => a[0]))}` : '');
+  bindStars();
+  $main.querySelectorAll('[data-g]').forEach(b => b.onclick = () => {
+    const k = b.dataset.g, o = b.dataset.o, s = new Set(sel(k));
+    s.has(o) ? s.delete(o) : s.add(o); mf[k] = [...s]; store.set('mf', mf);
+    const y = scrollY, open = [...$main.querySelectorAll('details.fg')].map(d => d.open);
+    viewMerkmale();
+    $main.querySelectorAll('details.fg').forEach((d, i) => d.open = open[i] || d.open);
+    scrollTo(0, y);
+  });
+  document.getElementById('mreset').onclick = () => { mf = {}; store.set('mf', mf); viewMerkmale(); };
+  document.getElementById('cntbtn').onclick = e => { e.preventDefault(); document.getElementById('mres').scrollIntoView({behavior:'smooth'}); };
+}
+
 function viewMerk(){
   const xs = [...merk].map(i => A[i]).filter(Boolean);
   setView('Merkliste', xs.length ? `${list(xs)}<button class="btn" id="clr"><small>Merkliste leeren</small></button>` :
@@ -298,6 +382,7 @@ function route(){
     case 'art': return viewArt(+h[1]);
     case 'arten': return viewArten();
     case 'merkliste': return viewMerk();
+    case 'merkmale': return viewMerkmale();
     default: return viewHome();
   }
 }
