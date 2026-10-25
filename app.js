@@ -108,6 +108,7 @@ function viewHome(){
     <div id="homebtns">
     <a class="btn primary" href="#/schluessel/1"><b>Bestimmen</b><small>Mit dem Bestimmungsschlüssel des Buchs, Schritt für Schritt</small></a>
     <a class="btn" href="#/schluessel"><b>Alle Schlüssel</b><small>Haupt- und Gruppenschlüssel direkt öffnen</small></a>
+    <a class="btn" href="#/blaettern/${store.get('lastpage', 1)}"><b>Im Buch blättern</b><small>Alle Seiten mit Verlinkungen – weiter bei S. ${Math.max(0, store.get('lastpage', 1) - 1)}</small></a>
     <a class="btn" href="#/merkmale"><b>Nach Merkmalen filtern</b><small>Hutfarbe, Unterseite, Geruch, Baum, Lebensraum …</small></a>
     <a class="btn" href="#/arten"><b>Alle Arten</b><small>${A.length} Arten nach Doppelseiten, mit Filtern</small></a>
     <a class="btn" href="#/merkliste"><b>Merkliste (${merk.size})</b><small>Deine Kandidaten zum Vergleichen</small></a>
@@ -211,7 +212,7 @@ function viewSpread(t){
     <div class="sect">Tafel S. ${t} <span class="tiny">– antippen zum Vergrößern</span></div>
     <div class="plate" id="pl"><canvas></canvas></div>
     <div class="row">${prev ? `<a class="btn" href="#/doppelseite/${prev}">‹ S. ${prev-1}</a>` : ''}
-      <a class="btn" href="#/textseite/${t}">Ganze Textseite</a>
+      <a class="btn" href="#/blaettern/${t}">Im Buch blättern</a>
       ${next ? `<a class="btn" href="#/doppelseite/${next}">S. ${next-1} ›</a>` : ''}</div>`);
   bindStars();
   const pl = document.getElementById('pl');
@@ -234,7 +235,8 @@ function viewArt(id){
       <div class="lat">${esc(x.lat)} · Buchseite ${x.buch}</div><div style="margin-top:6px">${badge(x)}</div></div>
     ${x.heute ? `<div class="warn">⚠ ${esc(x.heute)}</div>` : ''}
     <div class="row"><button class="btn" id="mk">${merk.has(id) ? '★ Gemerkt' : '☆ Merken'}</button>
-      <a class="btn" href="#/doppelseite/${x.pdf}">Doppelseite</a></div>
+      <a class="btn" href="#/doppelseite/${x.pdf}">Doppelseite</a>
+      <a class="btn" href="#/blaettern/${x.pdf}/${x.y0}">Im Buch</a></div>
     ${merkmaleHtml(x)}
     <div class="sect">Beschreibung im Buch <span class="tiny">– antippen zum Vergrößern</span></div>
     <div class="crop" id="cr"><canvas></canvas></div>
@@ -277,6 +279,84 @@ function viewArten(){
   $main.querySelectorAll('[data-f]').forEach(b => b.onclick = () => { filt.ess = b.dataset.f; store.set('filt', filt); viewArten(); });
   $main.querySelector('[data-rl]').onclick = () => { filt.rl = !filt.rl; store.set('filt', filt); viewArten(); };
   q.oninput = draw; draw();
+}
+
+/* ---------- Blättern ---------- */
+const NPAGES = 362;
+let browse = null;
+function pageLabel(p){ return p <= 2 ? 'Umschlag' : `S. ${p - 1}`; }
+function viewBrowse(p, y){
+  p = Math.min(NPAGES, Math.max(1, p));
+  if (!browse || !document.body.contains(browse.root)) {
+    $main.innerHTML = `
+      <div class="bar">
+        <input type="number" id="bjump" inputmode="numeric" min="0" max="361" placeholder="Seite" style="width:90px;font:inherit;padding:9px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--ink)">
+        <button class="btn" id="bgo" style="flex:0 0 auto;width:auto">Los</button>
+        <a class="btn" href="#/blaettern/21">Schlüssel</a>
+        <a class="btn" href="#/blaettern/340">Register</a>
+      </div>
+      <div class="tiny" style="margin-bottom:8px">Antippen: Beschreibungen und Namen auf Tafeln öffnen die Art, Seitenzahlen und Schlüsselnummern springen im Buch.</div>
+      <div id="br"></div>`;
+    const root = document.getElementById('br');
+    const pages = [];
+    const io = new IntersectionObserver(es => es.forEach(e => {
+      const d = e.target;
+      if (e.isIntersecting && d.dataset.f !== '1') { d.dataset.f = '1'; fillBrowse(d); }
+      else if (!e.isIntersecting && d.dataset.f === '1') { d.dataset.f = '0'; d.querySelectorAll('canvas,button,.reg').forEach(n => n.remove()); }
+    }), {rootMargin: '1500px 0px'});
+    for (let q = 1; q <= NPAGES; q++) {
+      const d = document.createElement('div'); d.className = 'pg'; d.dataset.p = q;
+      d.innerHTML = `<span class="lbl">${pageLabel(q)}</span>`;
+      root.appendChild(d); pages[q] = d; io.observe(d);
+    }
+    browse = {root, pages, io};
+    const go = () => { const v = parseInt(document.getElementById('bjump').value, 10); if (!isNaN(v)) location.hash = `#/blaettern/${v + 1}`; };
+    document.getElementById('bgo').onclick = go;
+    document.getElementById('bjump').onkeydown = e => { if (e.key === 'Enter') go(); };
+    addEventListener('scroll', onBrowseScroll, {passive: true});
+  }
+  const d = browse.pages[p];
+  $title.textContent = 'Blättern · ' + pageLabel(p);
+  requestAnimationFrame(() => {
+    scrollTo(0, Math.max(0, d.getBoundingClientRect().top + scrollY + y * d.offsetHeight - 120));
+    if (y > 0.01) { const f = document.createElement('div'); f.className = 'flash'; f.style.top = (y * 100) + '%'; d.appendChild(f); setTimeout(() => f.remove(), 2600); }
+  });
+}
+let scrollT = 0;
+function onBrowseScroll(){
+  if (!browse || scrollT) return;
+  scrollT = setTimeout(() => {
+    scrollT = 0; if (!browse) return;
+    const first = browse.pages[1], h = first.offsetHeight + 10;
+    const p = Math.min(NPAGES, Math.max(1, 1 + Math.floor((scrollY + innerHeight / 3 - (first.getBoundingClientRect().top + scrollY)) / h)));
+    $title.textContent = 'Blättern · ' + pageLabel(p);
+    history.replaceState(history.state, '', `#/blaettern/${p}`);
+    store.set('lastpage', p);
+  }, 150);
+}
+function addHot(d, h, onclick, label, cls = 'hs'){
+  const b = document.createElement('button'); b.className = cls;
+  const [x0,y0,x1,y1] = h.b, pad = cls === 'hs' ? 0.004 : 0;
+  Object.assign(b.style, {left: (x0-pad)*100+'%', top: (y0-pad)*100+'%', width: (x1-x0+2*pad)*100+'%', height: (y1-y0+2*pad)*100+'%'});
+  b.setAttribute('aria-label', label); b.onclick = onclick; d.appendChild(b);
+}
+async function fillBrowse(d){
+  const p = +d.dataset.p;
+  const c = document.createElement('canvas'); d.prepend(c);
+  paint(c, p).catch(() => {});
+  for (const x of byTextPage[p] || [])
+    addHot(d, {b: [0, x.y0, 1, x.y1]}, () => location.hash = `#/art/${x.id}`, x.de, 'reg');
+  for (const h of D.plab[p] || [])
+    addHot(d, h, () => location.hash = `#/art/${h.a}`, A[h.a].de);
+  for (const h of [...(D.hot[p] || []), ...(D.bhot[p] || [])]) {
+    if (h.pg) addHot(d, h, () => location.hash = `#/blaettern/${h.pg + 1}`, 'Seite ' + h.pg);
+    else if (h.k != null) addHot(d, h, () => {
+      const k = keyById(h.k); if (!k) return;
+      let a = k.a[h.n];
+      if (!a) { const lo = Object.keys(k.a).map(Number).filter(m => m < +h.n).sort((x, y) => y - x)[0]; a = lo ? k.a[lo] : [k.pdf, k.y]; }
+      location.hash = `#/blaettern/${a[0]}/${a[1]}`;
+    }, 'Weiter zu ' + h.n);
+  }
 }
 
 /* ---------- Merkmale ---------- */
@@ -374,6 +454,7 @@ function viewMerk(){
 function route(){
   const h = location.hash.replace(/^#\/?/, '').split('/');
   if (h[0] !== 'schluessel' || !h[1]) keyState = null;
+  if (h[0] !== 'blaettern') { browse?.io.disconnect(); browse = null; removeEventListener('scroll', onBrowseScroll); }
   switch (h[0]) {
     case 'schluessel': return h[1] ? viewKey(+h[1], h[2]) : viewKeyList();
     case 'seite': return viewSeite(+h[1]);
@@ -383,6 +464,7 @@ function route(){
     case 'arten': return viewArten();
     case 'merkliste': return viewMerk();
     case 'merkmale': return viewMerkmale();
+    case 'blaettern': return viewBrowse(+h[1] || 1, +h[2] || 0);
     default: return viewHome();
   }
 }
@@ -390,7 +472,7 @@ let lastRoute = '';
 addEventListener('hashchange', () => {
   const sameKeyRun = location.hash.startsWith('#/schluessel/') && lastRoute.startsWith('#/schluessel/');
   lastRoute = location.hash; route();
-  if (!sameKeyRun && !location.hash.startsWith('#/schluessel/')) scrollTo(0, 0);
+  if (!sameKeyRun && !location.hash.startsWith('#/schluessel/') && !location.hash.startsWith('#/blaettern')) scrollTo(0, 0);
 });
 document.getElementById('back').onclick = () => history.length > 1 ? history.back() : (location.hash = '#/');
 document.getElementById('home').onclick = () => location.hash = '#/';
