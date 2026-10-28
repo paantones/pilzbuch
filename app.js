@@ -19,6 +19,7 @@ const keyPages = new Set(D.runs.flat());
 const runOf = p => D.runs.find(r => r.includes(p));
 const keyById = id => D.keys.find(k => k.id === id);
 const byTextPage = {}; A.forEach(x => (byTextPage[x.pdf] ||= []).push(x));
+Object.values(byTextPage).forEach(xs => xs.sort((a, b) => a.y0 - b.y0));
 const textPages = Object.keys(byTextPage).map(Number).sort((a,b)=>a-b);
 const mentionedIn = {}; A.forEach(x => x.refs.forEach(r => (mentionedIn[r] ||= []).push(x.id)));
 const nebenBei = {}; D.neben.forEach(n => n.bei.forEach(b => (nebenBei[b] ||= []).push(n)));
@@ -187,6 +188,13 @@ async function fill(d){
     else { b.setAttribute('aria-label', 'Weiter zu ' + h.n); b.onclick = () => location.hash = `#/schluessel/${h.k}/${h.n}`; }
     d.appendChild(b);
   }
+  for (const h of D.ment[p] || []) {
+    const b = document.createElement('button'); b.className = 'hs ment';
+    const [x0,y0,x1,y1] = h.b;
+    Object.assign(b.style, {left: (x0-.004)*100+'%', top: (y0-.004)*100+'%', width: (x1-x0+.008)*100+'%', height: (y1-y0+.008)*100+'%'});
+    b.setAttribute('aria-label', A[h.a].de); b.onclick = () => location.hash = `#/art/${h.a}`;
+    d.appendChild(b);
+  }
 }
 
 function spreadOf(buch){
@@ -216,7 +224,15 @@ function viewSpread(t){
       ${next ? `<a class="btn" href="#/doppelseite/${next}">S. ${next-1} ›</a>` : ''}</div>`);
   bindStars();
   const pl = document.getElementById('pl');
-  paint(pl.querySelector('canvas'), t + 1); pl.onclick = () => zoom(t + 1);
+  const plc = pl.querySelector('canvas');
+  pl.style.position = 'relative';
+  paint(plc, t + 1); pl.onclick = e => {
+    if (e.target.closest('.chipfig')) return;
+    const id = figHit(t + 1, e, plc);
+    if (id < 0) return zoom(t + 1);
+    const c = figChip(pl, e, id, ` <button class="zb" aria-label="Vergrößern">🔍</button>`);
+    c.querySelector('.zb').onclick = ev => { ev.stopPropagation(); zoom(t + 1); };
+  };
 }
 function viewTextPage(t){
   setView(`Textseite S. ${t-1}`, `<div class="plate" id="tp"><canvas></canvas></div><a class="btn" href="#/doppelseite/${t}">Zur Doppelseite</a>`);
@@ -302,7 +318,7 @@ function viewBrowse(p, y){
     const io = new IntersectionObserver(es => es.forEach(e => {
       const d = e.target;
       if (e.isIntersecting && d.dataset.f !== '1') { d.dataset.f = '1'; fillBrowse(d); }
-      else if (!e.isIntersecting && d.dataset.f === '1') { d.dataset.f = '0'; d.querySelectorAll('canvas,button,.reg').forEach(n => n.remove()); }
+      else if (!e.isIntersecting && d.dataset.f === '1') { d.dataset.f = '0'; d.querySelectorAll('canvas,button,.reg,.chipfig').forEach(n => n.remove()); }
     }), {rootMargin: '1500px 0px'});
     for (let q = 1; q <= NPAGES; q++) {
       const d = document.createElement('div'); d.className = 'pg'; d.dataset.p = q;
@@ -334,6 +350,31 @@ function onBrowseScroll(){
     store.set('lastpage', p);
   }, 150);
 }
+/* Tipp auf eine Abbildung: nächstgelegene Beschriftung vorschlagen */
+function figHit(p, e, el){
+  const labs = D.plab[p]; if (!labs || !labs.length) return -1;
+  const r = el.getBoundingClientRect();
+  const x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height, ar = r.height / r.width;
+  let best = -1, bd = 9;
+  for (const h of labs) {
+    const [x0,y0,x1,y1] = h.b;
+    const dx = Math.max(x0 - x, 0, x - x1), dy = Math.max(y0 - y, 0, y - y1) * ar;
+    const dd = Math.hypot(dx, dy);
+    if (dd < bd) { bd = dd; best = h.a; }
+  }
+  return bd < 0.2 ? best : -1;
+}
+function figChip(host, e, id, extra){
+  host.querySelectorAll('.chipfig').forEach(n => n.remove());
+  const r = host.getBoundingClientRect();
+  const c = document.createElement('div'); c.className = 'chipfig';
+  c.style.left = Math.min(r.width - 220, Math.max(4, e.clientX - r.left - 100)) + 'px';
+  c.style.top = (e.clientY - r.top + 12) + 'px';
+  c.innerHTML = `<a href="#/art/${id}">${esc(A[id].de)} ›</a>${extra || ''}`;
+  host.appendChild(c);
+  setTimeout(() => c.remove(), 6000);
+  return c;
+}
 function addHot(d, h, onclick, label, cls = 'hs'){
   const b = document.createElement('button'); b.className = cls;
   const [x0,y0,x1,y1] = h.b, pad = cls === 'hs' ? 0.004 : 0;
@@ -348,6 +389,9 @@ async function fillBrowse(d){
     addHot(d, {b: [0, x.y0, 1, x.y1]}, () => location.hash = `#/art/${x.id}`, x.de, 'reg');
   for (const h of D.plab[p] || [])
     addHot(d, h, () => location.hash = `#/art/${h.a}`, A[h.a].de);
+  for (const h of D.ment[p] || [])
+    addHot(d, h, () => location.hash = `#/art/${h.a}`, A[h.a].de, 'hs ment');
+  if (D.plab[p]) c.onclick = e => { const id = figHit(p, e, c); if (id >= 0) figChip(d, e, id); };
   for (const h of [...(D.hot[p] || []), ...(D.bhot[p] || [])]) {
     if (h.pg) addHot(d, h, () => location.hash = `#/blaettern/${h.pg + 1}`, 'Seite ' + h.pg);
     else if (h.k != null) addHot(d, h, () => {

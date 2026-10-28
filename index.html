@@ -53,6 +53,11 @@ h2 a{color:inherit}
 .pg .hs:active{background:var(--hot-b)}
 .pg .reg{position:absolute;border:0;padding:0;background:transparent;border-left:4px solid var(--hot-b);border-radius:0}
 .pg .reg:active{background:var(--hot)}
+.chipfig{position:absolute;z-index:5;background:var(--accent);color:var(--accent-ink);border-radius:999px;padding:8px 14px;box-shadow:0 2px 8px rgba(0,0,0,.3);font-weight:600;display:flex;gap:8px;align-items:center;white-space:nowrap}
+.chipfig a{color:inherit;text-decoration:none}
+.chipfig .zb{background:none;border:0;font-size:16px;padding:0}
+.pg .hs.ment{background:rgba(60,160,90,.14);outline-color:rgba(60,160,90,.6)}
+.pg .hs.ment:active{background:rgba(60,160,90,.4)}
 .pg .flash{position:absolute;left:0;right:0;height:3.2%;background:rgba(255,210,0,.35);pointer-events:none;animation:fl 2.4s ease-out forwards}
 @keyframes fl{0%,60%{opacity:1}100%{opacity:0}}
 .pg .lbl{position:absolute;right:6px;bottom:6px;font-size:11px;color:#777;background:#fffc;padding:1px 6px;border-radius:6px}
