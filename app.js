@@ -90,10 +90,26 @@ document.getElementById('zclose').onclick = () => history.back();
 addEventListener('popstate', () => { const z = document.getElementById('zoom'); if (z.style.display === 'block') z.style.display = 'none'; });
 
 /* ---------- Bausteine ---------- */
-const item = x => `<li class="item"><a href="#/art/${x.id}"><div class="de">${esc(x.de)}</div><div class="lat">${esc(x.lat)}</div><div>${badge(x)}</div></a>
+const item = x => `<li class="item"><a href="#/art/${x.id}" class="thl">${D.th[x.id] ? `<canvas class="th" data-t="${x.id}" width="112" height="112"></canvas>` : '<span class="th"></span>'}
+  <span class="txt"><div class="de">${esc(x.de)}</div><div class="lat">${esc(x.lat)}</div><div>${badge(x)}</div></span></a>
   <button class="star ${merk.has(x.id)?'on':''}" data-star="${x.id}" aria-label="Merken">${merk.has(x.id)?'★':'☆'}</button></li>`;
 const list = xs => `<ul class="list">${xs.map(item).join('')}</ul>`;
+/* Vorschaubilder: Ausschnitt der Tafel aus dem eigenen PDF */
+const thumbIO = new IntersectionObserver(es => es.forEach(e => {
+  if (e.isIntersecting) { thumbIO.unobserve(e.target); drawThumb(e.target); }
+}), {rootMargin: '400px'});
+async function drawThumb(c){
+  const t = D.th[c.dataset.t]; if (!t) return;
+  const [p, x0, y0, x1, y1] = t;
+  const src = await renderPage(p, 560);
+  const sx = x0 * src.width, sy = y0 * src.height, sw = (x1 - x0) * src.width, sh = (y1 - y0) * src.height;
+  const S = c.width, ctx = c.getContext('2d');
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, S, S);
+  const k = Math.min(S / sw, S / sh), dw = sw * k, dh = sh * k;
+  ctx.drawImage(src, sx, sy, sw, sh, (S - dw) / 2, (S - dh) / 2, dw, dh);
+}
 function bindStars(root = $main){
+  root.querySelectorAll('canvas.th:not([data-o])').forEach(c => { c.dataset.o = 1; thumbIO.observe(c); });
   root.querySelectorAll('[data-star]').forEach(b => b.onclick = e => {
     e.preventDefault(); const id = +b.dataset.star; toggleMerk(id);
     b.classList.toggle('on', merk.has(id)); b.textContent = merk.has(id) ? '★' : '☆';
