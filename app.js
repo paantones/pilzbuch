@@ -33,12 +33,29 @@ let merk = new Set(store.get('merk', []));
 const toggleMerk = id => { merk.has(id) ? merk.delete(id) : merk.add(id); store.set('merk', [...merk]); };
 
 /* ---------- PDF-Speicher (IndexedDB) ---------- */
+let dbP = null;
 function idb(){
-  return new Promise((res, rej) => {
-    const r = indexedDB.open('pilzbuch', 1);
-    r.onupgradeneeded = () => r.result.createObjectStore('files');
+  return dbP ||= new Promise((res, rej) => {
+    const r = indexedDB.open('pilzbuch', 2);
+    r.onupgradeneeded = () => { for (const s of ['files', 'funde', 'fotos']) if (!r.result.objectStoreNames.contains(s)) r.result.createObjectStore(s); };
     r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
   });
+}
+async function dbAll(s){
+  const db = await idb();
+  return new Promise(res => { const q = db.transaction(s).objectStore(s).getAll(); q.onsuccess = () => res(q.result || []); q.onerror = () => res([]); });
+}
+async function dbGet(s, k){
+  const db = await idb();
+  return new Promise(res => { const q = db.transaction(s).objectStore(s).get(k); q.onsuccess = () => res(q.result ?? null); q.onerror = () => res(null); });
+}
+async function dbPut(s, k, v){
+  const db = await idb();
+  return new Promise((res, rej) => { const t = db.transaction(s, 'readwrite'); t.objectStore(s).put(v, k); t.oncomplete = res; t.onerror = () => rej(t.error); });
+}
+async function dbDel(s, k){
+  const db = await idb();
+  return new Promise(res => { const t = db.transaction(s, 'readwrite'); t.objectStore(s).delete(k); t.oncomplete = res; t.onerror = res; });
 }
 async function idbGet(){
   const db = await idb();
@@ -131,8 +148,9 @@ function viewHome(){
     <a class="btn" href="#/merkmale"><b>Nach Merkmalen filtern</b><small>Hutfarbe, Unterseite, Geruch, Baum, Lebensraum …</small></a>
     <a class="btn" href="#/arten"><b>Alle Arten</b><small>${A.length} Arten nach Doppelseiten, mit Filtern</small></a>
     <a class="btn" href="#/merkliste"><b>Merkliste (${merk.size})</b><small>Deine Kandidaten zum Vergleichen</small></a>
+    <a class="btn" href="#/funde"><b>Meine Funde</b><small>Fundorte mit Datum, GPS, Notiz und Foto – nur auf diesem Gerät</small></a>
     <div class="note">Speisewert und Rote Liste sind automatisch aus dem Buch (Stand 1988) erkannt. Maßgeblich ist der Originaltext. Manche damals essbaren Arten gelten heute als giftig. Vor dem Essen immer zur Pilzberatung.</div>
-    ${Object.keys(userTh).length ? `<button class="btn" id="shareth"><small>Eigene Vorschaubilder (${Object.keys(userTh).length}) teilen</small></button>` : ''}
+    <a class="btn" href="#/sicherung"><small>Sicherung: Funde und eigene Vorschaubilder exportieren/importieren</small></a>
     <button class="btn" id="newpdf"><small>PDF neu auswählen</small></button>
     </div>`);
   const q = document.getElementById('q'), res = document.getElementById('res'), hb = document.getElementById('homebtns');
@@ -143,7 +161,6 @@ function viewHome(){
     bindStars(res);
   };
   document.getElementById('newpdf').onclick = pickPdf;
-  const sh = document.getElementById('shareth'); if (sh) sh.onclick = shareUserTh;
 }
 function searchHtml(v){
   const t = norm(v).split(/\s+/).filter(Boolean);
@@ -291,6 +308,151 @@ function viewArt(id){
   const cr = document.getElementById('cr'), pl = document.getElementById('pl');
   paint(cr.querySelector('canvas'), x.pdf, x.y0, x.y1); cr.onclick = () => zoom(x.pdf, x.y0, x.y1);
   paint(pl.querySelector('canvas'), x.tafel); pl.onclick = () => zoom(x.tafel);
+  const fs = document.createElement('div');
+  $main.querySelector('#mk').closest('.row').after(fs);
+  dbAll('funde').then(all => {
+    const mine = all.filter(f => f.art === id).sort((a, b) => b.datum.localeCompare(a.datum));
+    fs.innerHTML = `<div class="sect">Meine Funde (${mine.length})</div>${fundList(mine, false)}
+      <a class="btn" href="#/fund/neu/${id}" style="text-align:center">＋ Fund dieser Art speichern</a>`;
+    bindFundThumbs(fs);
+  });
+}
+
+/* ---------- Funde ---------- */
+const fmtDate = d => d ? d.split('-').reverse().join('.') : '';
+const fundList = (fs, showArt = true) => fs.length ? `<ul class="list">${fs.map(f => `<li class="item"><a href="#/fund/${f.id}" class="thl">
+  ${f.foto ? `<img class="th" data-foto="${f.id}" alt="">` : '<span class="th" style="display:flex;align-items:center;justify-content:center;font-size:22px">📍</span>'}
+  <span class="txt"><div class="de">${showArt ? esc(f.art != null ? A[f.art]?.de.split(',')[0] : 'Noch unbestimmt') : fmtDate(f.datum)}</div>
+  <div class="lat">${showArt ? fmtDate(f.datum) + ' · ' : ''}${esc(f.ort || (f.lat != null ? `${f.lat.toFixed(4)}, ${f.lon.toFixed(4)}` : 'ohne Ort'))}</div>
+  ${f.notiz ? `<div class="tiny">${esc(f.notiz.slice(0, 80))}</div>` : ''}</span></a></li>`).join('')}</ul>` : '';
+function bindFundThumbs(root = $main){
+  root.querySelectorAll('img[data-foto]').forEach(async img => {
+    const b = await dbGet('fotos', img.dataset.foto);
+    if (b) { img.src = URL.createObjectURL(b); img.style.objectFit = 'cover'; }
+  });
+}
+async function viewFunde(){
+  setView('Meine Funde', '<div class="loading"><div class="spinner"></div></div>');
+  const all = (await dbAll('funde')).sort((a, b) => b.datum.localeCompare(a.datum) || b.created - a.created);
+  if (!location.hash.startsWith('#/funde')) return;
+  setView('Meine Funde', `
+    <a class="btn primary" href="#/fund/neu" style="text-align:center"><b>＋ Neuer Fund</b></a>
+    ${all.length ? fundList(all) : '<div class="note">Noch keine Funde gespeichert. Du kannst einen Fund hier oder direkt bei einer Art anlegen.</div>'}
+    <div class="note">Funde und Fotos liegen nur in diesem Browser auf diesem Gerät. Über „Sicherung“ auf dem Startbildschirm kannst du sie exportieren.</div>`);
+  bindFundThumbs();
+}
+async function resizePhoto(file, max = 1400){
+  const img = await createImageBitmap(file);
+  const k = Math.min(1, max / Math.max(img.width, img.height));
+  const c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+  c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+  return new Promise(res => c.toBlob(res, 'image/jpeg', 0.82));
+}
+async function viewFund(fid, artId){
+  const isNew = fid === 'neu';
+  const f = isNew ? {id: 'f' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), art: Number.isFinite(artId) ? artId : null,
+    datum: new Date().toISOString().slice(0, 10), lat: null, lon: null, acc: null, ort: '', notiz: '', foto: false, created: Date.now()}
+    : await dbGet('funde', fid);
+  if (!f) return viewFunde();
+  let fotoBlob = f.foto ? await dbGet('fotos', f.id) : null;
+  setView(isNew ? 'Neuer Fund' : 'Fund bearbeiten', `
+    <div class="sect">Art</div>
+    <div id="artsel" class="item" style="display:block"></div>
+    <input type="search" id="artq" placeholder="Art suchen oder ändern …" autocomplete="off">
+    <div id="artres"></div>
+    <div class="sect">Datum</div>
+    <input type="date" id="datum" value="${f.datum}" class="inp">
+    <div class="sect">Ort</div>
+    <div class="row"><button class="btn" id="gps">📍 Aktuellen Standort übernehmen</button></div>
+    <div id="gpsinfo" class="tiny"></div>
+    <input type="text" id="ort" placeholder="Ortsbeschreibung, z. B. Dölauer Heide, Nordrand" value="${esc(f.ort)}" class="inp">
+    <div class="sect">Notiz</div>
+    <textarea id="notiz" rows="4" class="inp" placeholder="Bäume in der Nähe, Geruch, Anzahl, Bestimmungsunsicherheit …">${esc(f.notiz)}</textarea>
+    <div class="sect">Foto</div>
+    <img id="fimg" style="max-width:100%;border-radius:10px;display:none">
+    <div class="row"><label class="btn" style="text-align:center">📷 Foto aufnehmen/wählen<input type="file" id="foto" accept="image/*" capture="environment" hidden></label>
+      <button class="btn" id="fotodel" style="display:none">Foto entfernen</button></div>
+    <div class="row"><button class="btn primary" id="fsave">Speichern</button>${isNew ? '' : '<button class="btn" id="fdel">Löschen</button>'}</div>`);
+  const showArt = () => {
+    document.getElementById('artsel').innerHTML = f.art != null && A[f.art]
+      ? `<div class="de">${esc(A[f.art].de)}</div><div class="lat">${esc(A[f.art].lat)}</div><button class="chip" id="artclr" style="margin-top:6px">Als unbestimmt speichern</button>`
+      : '<div class="de">Noch unbestimmt</div><div class="tiny">Du kannst die Art jetzt oder später eintragen.</div>';
+    const c = document.getElementById('artclr'); if (c) c.onclick = () => { f.art = null; showArt(); };
+  };
+  showArt();
+  const aq = document.getElementById('artq'), ar = document.getElementById('artres');
+  aq.oninput = () => {
+    const t = norm(aq.value).split(/\s+/).filter(Boolean);
+    if (aq.value.trim().length < 2) { ar.innerHTML = ''; return; }
+    const xs = A.filter(x => t.every(w => norm(x.de + ' ' + x.lat).includes(w))).slice(0, 12);
+    ar.innerHTML = xs.map(x => `<button class="chip" data-a="${x.id}" style="margin:3px">${esc(x.de.split(',')[0])}</button>`).join('');
+    ar.querySelectorAll('[data-a]').forEach(b => b.onclick = () => { f.art = +b.dataset.a; aq.value = ''; ar.innerHTML = ''; showArt(); });
+  };
+  const gi = document.getElementById('gpsinfo');
+  const showGps = () => gi.innerHTML = f.lat != null
+    ? `Gespeichert: ${f.lat.toFixed(5)}, ${f.lon.toFixed(5)}${f.acc ? ` (± ${Math.round(f.acc)} m)` : ''} · <a href="geo:${f.lat},${f.lon}?q=${f.lat},${f.lon}">In Karten-App öffnen</a>`
+    : 'Noch kein Standort gespeichert.';
+  showGps();
+  document.getElementById('gps').onclick = () => {
+    if (!navigator.geolocation) return gi.textContent = 'Standort wird von diesem Browser nicht unterstützt.';
+    gi.textContent = 'Suche Standort …';
+    navigator.geolocation.getCurrentPosition(p => { f.lat = p.coords.latitude; f.lon = p.coords.longitude; f.acc = p.coords.accuracy; showGps(); },
+      e => gi.textContent = 'Kein Standort: ' + (e.code === 1 ? 'Zugriff verweigert. Bitte in den Browser-Einstellungen erlauben.' : e.message),
+      {enableHighAccuracy: true, timeout: 20000, maximumAge: 0});
+  };
+  const fimg = document.getElementById('fimg'), fdel = document.getElementById('fotodel');
+  const showFoto = () => {
+    if (fotoBlob) { fimg.src = URL.createObjectURL(fotoBlob); fimg.style.display = 'block'; fdel.style.display = ''; }
+    else { fimg.style.display = 'none'; fdel.style.display = 'none'; }
+  };
+  showFoto();
+  document.getElementById('foto').onchange = async e => { const file = e.target.files[0]; if (file) { fotoBlob = await resizePhoto(file); showFoto(); } };
+  fdel.onclick = () => { fotoBlob = null; showFoto(); };
+  document.getElementById('fsave').onclick = async () => {
+    f.datum = document.getElementById('datum').value || f.datum;
+    f.ort = document.getElementById('ort').value.trim();
+    f.notiz = document.getElementById('notiz').value.trim();
+    f.foto = !!fotoBlob;
+    if (fotoBlob) await dbPut('fotos', f.id, fotoBlob); else await dbDel('fotos', f.id);
+    await dbPut('funde', f.id, f);
+    try { await navigator.storage?.persist?.(); } catch {}
+    history.back();
+  };
+  const del = document.getElementById('fdel');
+  if (del) del.onclick = async () => { if (!confirm('Diesen Fund wirklich löschen?')) return; await dbDel('funde', f.id); await dbDel('fotos', f.id); location.hash = '#/funde'; };
+}
+
+/* ---------- Sicherung ---------- */
+function viewSicherung(){
+  setView('Sicherung', `
+    <div class="note">Exportiert deine Funde (ohne Fotos) und eigenen Vorschaubilder als Datei. Auf einem anderen Gerät importierst du sie hier wieder. Vorhandene Einträge bleiben erhalten, gleiche werden aktualisiert.</div>
+    <button class="btn primary" id="exp" style="text-align:center">Sicherung exportieren</button>
+    <label class="btn" style="text-align:center">Sicherungsdatei importieren<input type="file" id="impf" accept=".json,application/json,text/plain" hidden></label>
+    <div class="sect">Oder Text einfügen</div>
+    <textarea id="impt" rows="4" class="inp" placeholder="Exportierten Text hier einfügen"></textarea>
+    <button class="btn" id="impbtn" style="text-align:center">Text importieren</button>
+    <div id="impst" class="tiny"></div>`);
+  document.getElementById('exp').onclick = async () => {
+    const data = {app: 'pilzbuch', version: 1, exportiert: new Date().toISOString(), userth: userTh, funde: await dbAll('funde')};
+    const txt = JSON.stringify(data);
+    const file = new File([txt], `pilzbuch-sicherung-${new Date().toISOString().slice(0, 10)}.json`, {type: 'application/json'});
+    try { if (navigator.canShare?.({files: [file]})) { await navigator.share({files: [file], title: 'Pilzbuch-Sicherung'}); return; } } catch (e) { if (e.name === 'AbortError') return; }
+    const a = document.createElement('a'); a.href = URL.createObjectURL(file); a.download = file.name; a.click();
+  };
+  const st = document.getElementById('impst');
+  const doImport = async txt => {
+    try {
+      const d = JSON.parse(txt.replace(/^PILZBUCH-BILDER\s*/, ''));
+      let nT = 0, nF = 0;
+      const th = d.app === 'pilzbuch' ? d.userth || {} : d;   // auch alter Bilder-Export
+      for (const [k, v] of Object.entries(th)) if (Array.isArray(v) && v.length === 5) { userTh[k] = v; nT++; }
+      store.set('userth', userTh);
+      for (const f of d.funde || []) if (f && f.id && f.datum) { const old = await dbGet('funde', f.id); await dbPut('funde', f.id, {...f, foto: old?.foto || false}); nF++; }
+      st.textContent = `Importiert: ${nF} Funde, ${nT} Vorschaubilder.`;
+    } catch (e) { st.textContent = 'Das sieht nicht nach einer Pilzbuch-Sicherung aus.'; }
+  };
+  document.getElementById('impf').onchange = async e => { const f = e.target.files[0]; if (f) doImport(await f.text()); };
+  document.getElementById('impbtn').onclick = () => doImport(document.getElementById('impt').value);
 }
 
 /* ---------- Vorschaubild selbst festlegen ---------- */
@@ -581,6 +743,9 @@ function route(){
     case 'merkmale': return viewMerkmale();
     case 'blaettern': return viewBrowse(+h[1] || 1, +h[2] || 0);
     case 'bild': return viewBild(+h[1], +h[2] || 0);
+    case 'funde': return viewFunde();
+    case 'fund': return viewFund(h[1] || 'neu', h[2] != null && h[2] !== '' ? +h[2] : NaN);
+    case 'sicherung': return viewSicherung();
     default: return viewHome();
   }
 }
