@@ -90,7 +90,9 @@ document.getElementById('zclose').onclick = () => history.back();
 addEventListener('popstate', () => { const z = document.getElementById('zoom'); if (z.style.display === 'block') z.style.display = 'none'; });
 
 /* ---------- Bausteine ---------- */
-const item = x => `<li class="item"><a href="#/art/${x.id}" class="thl">${D.th[x.id] ? `<canvas class="th" data-t="${x.id}" width="112" height="112"></canvas>` : '<span class="th"></span>'}
+let userTh = store.get('userth', {});
+const thumbOf = id => userTh[id] || D.th[id];
+const item = x => `<li class="item"><a href="#/art/${x.id}" class="thl">${thumbOf(x.id) ? `<canvas class="th" data-t="${x.id}" width="112" height="112"></canvas>` : '<span class="th"></span>'}
   <span class="txt"><div class="de">${esc(x.de)}</div><div class="lat">${esc(x.lat)}</div><div>${badge(x)}</div></span></a>
   <button class="star ${merk.has(x.id)?'on':''}" data-star="${x.id}" aria-label="Merken">${merk.has(x.id)?'★':'☆'}</button></li>`;
 const list = xs => `<ul class="list">${xs.map(item).join('')}</ul>`;
@@ -99,7 +101,7 @@ const thumbIO = new IntersectionObserver(es => es.forEach(e => {
   if (e.isIntersecting) { thumbIO.unobserve(e.target); drawThumb(e.target); }
 }), {rootMargin: '400px'});
 async function drawThumb(c){
-  const t = D.th[c.dataset.t]; if (!t) return;
+  const t = thumbOf(c.dataset.t); if (!t) return;
   const [p, x0, y0, x1, y1] = t;
   const src = await renderPage(p, 560);
   const sx = x0 * src.width, sy = y0 * src.height, sw = (x1 - x0) * src.width, sh = (y1 - y0) * src.height;
@@ -130,6 +132,7 @@ function viewHome(){
     <a class="btn" href="#/arten"><b>Alle Arten</b><small>${A.length} Arten nach Doppelseiten, mit Filtern</small></a>
     <a class="btn" href="#/merkliste"><b>Merkliste (${merk.size})</b><small>Deine Kandidaten zum Vergleichen</small></a>
     <div class="note">Speisewert und Rote Liste sind automatisch aus dem Buch (Stand 1988) erkannt. Maßgeblich ist der Originaltext. Manche damals essbaren Arten gelten heute als giftig. Vor dem Essen immer zur Pilzberatung.</div>
+    ${Object.keys(userTh).length ? `<button class="btn" id="shareth"><small>Eigene Vorschaubilder (${Object.keys(userTh).length}) teilen</small></button>` : ''}
     <button class="btn" id="newpdf"><small>PDF neu auswählen</small></button>
     </div>`);
   const q = document.getElementById('q'), res = document.getElementById('res'), hb = document.getElementById('homebtns');
@@ -140,6 +143,7 @@ function viewHome(){
     bindStars(res);
   };
   document.getElementById('newpdf').onclick = pickPdf;
+  const sh = document.getElementById('shareth'); if (sh) sh.onclick = shareUserTh;
 }
 function searchHtml(v){
   const t = norm(v).split(/\s+/).filter(Boolean);
@@ -274,6 +278,8 @@ function viewArt(id){
     <div class="crop" id="cr"><canvas></canvas></div>
     <div class="sect">Tafel S. ${x.tafel - 1}</div>
     <div class="plate" id="pl"><canvas></canvas></div>
+    <div class="row">${thumbOf(id) ? `<canvas class="th" data-t="${id}" width="112" height="112" style="width:56px;height:56px;border-radius:8px;border:1px solid var(--line);flex:none"></canvas>` : ''}
+      <a class="btn" href="#/bild/${id}">${thumbOf(id) ? 'Vorschaubild ändern' : 'Vorschaubild festlegen'}</a></div>
     ${refs.length ? `<div class="sect">Im Text genannt – Verwechslung/Vergleich</div>${list(refs)}` : ''}
     ${back.length ? `<div class="sect">Wird erwähnt bei</div>${list(back)}` : ''}
     ${neb.length ? `<div class="sect">Hier erwähnte weitere Arten</div><div class="note">${neb.map(n => `<i>${esc(n.lat)}</i>${n.de ? ' – ' + esc(n.de) : ''}`).join('<br>')}</div>` : ''}
@@ -285,6 +291,55 @@ function viewArt(id){
   const cr = document.getElementById('cr'), pl = document.getElementById('pl');
   paint(cr.querySelector('canvas'), x.pdf, x.y0, x.y1); cr.onclick = () => zoom(x.pdf, x.y0, x.y1);
   paint(pl.querySelector('canvas'), x.tafel); pl.onclick = () => zoom(x.tafel);
+}
+
+/* ---------- Vorschaubild selbst festlegen ---------- */
+function viewBild(id, page){
+  const x = A[id]; if (!x) return viewHome();
+  const cur = thumbOf(id);
+  let p = page || (cur ? cur[0] : x.tafel);
+  let sel = cur && cur[0] === p ? cur.slice(1) : null;
+  setView('Bild: ' + x.de.split(',')[0], `
+    <div class="note">Ziehe mit dem Finger einen Rahmen um den Pilz <b>${esc(x.de)}</b>. Liegt die Abbildung auf einer anderen Seite, blättere mit den Pfeilen.</div>
+    <div class="bar"><a class="btn" href="#/bild/${id}/${p - 1}">‹</a><span style="flex:1;text-align:center">S. ${p - 1}</span><a class="btn" href="#/bild/${id}/${p + 1}">›</a></div>
+    <div class="pg" id="bp" style="touch-action:none"><canvas></canvas><div id="sel" style="position:absolute;border:3px solid #e33;background:rgba(255,60,60,.12);display:none;pointer-events:none"></div></div>
+    <div class="row"><canvas id="prev" width="112" height="112" style="width:56px;height:56px;border-radius:8px;border:1px solid var(--line);flex:none;background:#fff"></canvas>
+      <button class="btn primary" id="save">Speichern</button></div>
+    <div class="row">${userTh[id] ? '<button class="btn" id="reset">Eigene Festlegung entfernen</button>' : ''}<a class="btn" href="#/art/${id}">Abbrechen</a></div>`);
+  const bp = document.getElementById('bp'), sd = document.getElementById('sel'), pc = document.getElementById('prev');
+  paint(bp.querySelector('canvas'), p);
+  const show = () => {
+    if (!sel) return;
+    Object.assign(sd.style, {display: 'block', left: sel[0]*100+'%', top: sel[1]*100+'%', width: (sel[2]-sel[0])*100+'%', height: (sel[3]-sel[1])*100+'%'});
+    pc.dataset.t = 'tmp'; drawPreview();
+  };
+  const drawPreview = async () => {
+    const src = await renderPage(p, 560), [x0,y0,x1,y1] = sel;
+    const sx = x0*src.width, sy = y0*src.height, sw = (x1-x0)*src.width, sh = (y1-y0)*src.height;
+    const ctx = pc.getContext('2d'), S = pc.width; ctx.fillStyle = '#fff'; ctx.fillRect(0,0,S,S);
+    const k = Math.min(S/sw, S/sh); ctx.drawImage(src, sx, sy, sw, sh, (S-sw*k)/2, (S-sh*k)/2, sw*k, sh*k);
+  };
+  let start = null;
+  const pos = e => { const r = bp.getBoundingClientRect(); return [Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), Math.min(1, Math.max(0, (e.clientY - r.top) / r.height))]; };
+  bp.onpointerdown = e => { start = pos(e); bp.setPointerCapture(e.pointerId); };
+  bp.onpointermove = e => { if (!start) return; const q = pos(e);
+    sel = [Math.min(start[0], q[0]), Math.min(start[1], q[1]), Math.max(start[0], q[0]), Math.max(start[1], q[1])];
+    Object.assign(sd.style, {display: 'block', left: sel[0]*100+'%', top: sel[1]*100+'%', width: (sel[2]-sel[0])*100+'%', height: (sel[3]-sel[1])*100+'%'}); };
+  bp.onpointerup = () => { start = null; if (sel && (sel[2]-sel[0] < 0.03 || sel[3]-sel[1] < 0.03)) sel = null; if (sel) show(); else sd.style.display = 'none'; };
+  show();
+  document.getElementById('save').onclick = () => {
+    if (!sel) return alertNote('Bitte zuerst einen Rahmen ziehen.');
+    userTh[id] = [p, ...sel.map(v => Math.round(v * 1000) / 1000)]; store.set('userth', userTh);
+    location.hash = `#/art/${id}`;
+  };
+  const rs = document.getElementById('reset');
+  if (rs) rs.onclick = () => { delete userTh[id]; store.set('userth', userTh); location.hash = `#/art/${id}`; };
+}
+function alertNote(t){ const n = document.createElement('div'); n.className = 'warn'; n.textContent = t; $main.prepend(n); setTimeout(() => n.remove(), 2500); }
+async function shareUserTh(){
+  const txt = 'PILZBUCH-BILDER ' + JSON.stringify(userTh);
+  try { if (navigator.share) { await navigator.share({title: 'Pilzbuch: eigene Vorschaubilder', text: txt}); return; } } catch {}
+  try { await navigator.clipboard.writeText(txt); alertNote('In die Zwischenablage kopiert.'); } catch { prompt('Kopieren:', txt); }
 }
 
 let filt = store.get('filt', {ess: 'alle', rl: false});
@@ -525,6 +580,7 @@ function route(){
     case 'merkliste': return viewMerk();
     case 'merkmale': return viewMerkmale();
     case 'blaettern': return viewBrowse(+h[1] || 1, +h[2] || 0);
+    case 'bild': return viewBild(+h[1], +h[2] || 0);
     default: return viewHome();
   }
 }
